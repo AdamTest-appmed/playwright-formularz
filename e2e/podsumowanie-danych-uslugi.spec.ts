@@ -6,6 +6,7 @@ type Wizyta = {
   nazwa: string;
   czasTrwania: string;
   cena: string;
+  expectedFailureReason?: string;
 };
 
 type DanePacjenta = {
@@ -26,11 +27,15 @@ const wizyty: Wizyta[] = [
     nazwa: 'Przegląd okresowy',
     czasTrwania: '60 min',
     cena: '280 zł',
+    expectedFailureReason:
+      'Znany defekt: dla przeglądu okresowego podsumowanie pokazuje czas trwania 30 min zamiast 60 min.',
   },
   {
     nazwa: 'Zabieg specjalistyczny',
     czasTrwania: '60 min',
     cena: '600 zł',
+    expectedFailureReason:
+      'Znany defekt: dla zabiegu specjalistycznego podsumowanie pokazuje cenę 6000 zł zamiast 600 zł.',
   },
   {
     nazwa: 'Konsultacja online',
@@ -108,19 +113,19 @@ const sprawdzDaneUslugiWPodsumowaniu = async (
   wizyta: Wizyta,
   oczekiwanyTermin: string
 ) => {
-  await expect.soft(pobierzWartoscZPodsumowania(page, 'Usługa')).toHaveText(
+  await expect(pobierzWartoscZPodsumowania(page, 'Usługa')).toHaveText(
     wizyta.nazwa
   );
 
-  await expect
-    .soft(pobierzWartoscZPodsumowania(page, 'Czas trwania'))
-    .toHaveText(wizyta.czasTrwania);
+  await expect(pobierzWartoscZPodsumowania(page, 'Czas trwania')).toHaveText(
+    wizyta.czasTrwania
+  );
 
-  await expect.soft(pobierzWartoscZPodsumowania(page, 'Cena')).toHaveText(
+  await expect(pobierzWartoscZPodsumowania(page, 'Cena')).toHaveText(
     wizyta.cena
   );
 
-  await expect.soft(pobierzWartoscZPodsumowania(page, 'Termin')).toHaveText(
+  await expect(pobierzWartoscZPodsumowania(page, 'Termin')).toHaveText(
     oczekiwanyTermin
   );
 };
@@ -129,28 +134,28 @@ const sprawdzDanePacjentaWPodsumowaniu = async (
   page: Page,
   pacjent: DanePacjenta
 ) => {
-  await expect
-    .soft(pobierzWartoscZPodsumowania(page, 'Imię i nazwisko'))
-    .toHaveText(`${pacjent.imie} ${pacjent.nazwisko}`);
+  await expect(pobierzWartoscZPodsumowania(page, 'Imię i nazwisko')).toHaveText(
+    `${pacjent.imie} ${pacjent.nazwisko}`
+  );
 
-  await expect.soft(pobierzWartoscZPodsumowania(page, 'E-mail')).toHaveText(
+  await expect(pobierzWartoscZPodsumowania(page, 'E-mail')).toHaveText(
     pacjent.email
   );
 
-  await expect.soft(pobierzWartoscZPodsumowania(page, 'Telefon')).toHaveText(
+  await expect(pobierzWartoscZPodsumowania(page, 'Telefon')).toHaveText(
     pacjent.telefon
   );
 
-  await expect.soft(pobierzWartoscZPodsumowania(page, 'Notatka')).toHaveText(
+  await expect(pobierzWartoscZPodsumowania(page, 'Notatka')).toHaveText(
     pacjent.notatka
   );
 };
 
 test.describe('Podsumowanie rezerwacji - dane usługi', () => {
   for (const wizyta of wizyty) {
-    test(`powinno wyświetlać poprawne dane w podsumowaniu dla: ${wizyta.nazwa}`, async ({
-      page,
-    }) => {
+    test(`powinno wyświetlać poprawne dane w podsumowaniu dla: ${wizyta.nazwa}${
+  wizyta.expectedFailureReason ? ' @known-bug' : ''
+}`, async ({ page }) => {
       const oczekiwanyTermin = `${terminWizyty.data}, ${terminWizyty.godzina}`;
 
       await page.goto(adresAplikacji);

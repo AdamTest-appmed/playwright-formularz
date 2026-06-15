@@ -2,7 +2,22 @@ import { test, expect, Page } from '@playwright/test';
 
 const adresAplikacji = 'https://rekrutacja-tester-app.vercel.app/?step=1';
 
-const pierwotneDanePacjenta = {
+type DanePacjenta = {
+  imie: string;
+  nazwisko: string;
+  email: string;
+  telefon: string;
+  notatka: string;
+};
+
+type DanePacjentaZPodsumowania = {
+  imieINazwisko: string;
+  email: string;
+  telefon: string;
+  notatka: string;
+};
+
+const pierwotneDanePacjenta: DanePacjenta = {
   imie: 'Jan',
   nazwisko: 'Kowalski',
   email: 'jan.kowalski@example.com',
@@ -10,7 +25,7 @@ const pierwotneDanePacjenta = {
   notatka: 'Pierwotna notatka',
 };
 
-const zaktualizowaneDanePacjenta = {
+const zaktualizowaneDanePacjenta: DanePacjenta = {
   imie: 'Adam',
   nazwisko: 'Nowak',
   email: 'adam.nowak@example.com',
@@ -23,20 +38,28 @@ const terminWizyty = {
   godzina: '16:00',
 };
 
+const escapeRegExp = (tekst: string) =>
+  tekst.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 const pobierzWartoscZPodsumowania = (page: Page, etykieta: string) =>
   page
     .locator('dt')
-    .filter({ hasText: new RegExp(`^${etykieta}$`) })
+    .filter({ hasText: new RegExp(`^${escapeRegExp(etykieta)}$`) })
     .locator('xpath=following-sibling::dd[1]');
 
 const wybierzTerminWizyty = async (page: Page, data: string, godzina: string) => {
+  await expect(
+    page.locator('button[disabled][title="Termin zarezerwowany"]').first()
+  ).toBeVisible({ timeout: 5000 });
+
   const sekcjaWybranejDaty = page.locator('section').filter({
     hasText: data,
   });
 
-  const wybranyTermin = sekcjaWybranejDaty
-    .locator('button')
-    .filter({ hasText: godzina });
+  const wybranyTermin = sekcjaWybranejDaty.getByRole('button', {
+    name: godzina,
+    exact: true,
+  });
 
   await expect(wybranyTermin).toBeVisible();
   await expect(wybranyTermin).toBeEnabled();
@@ -46,7 +69,7 @@ const wybierzTerminWizyty = async (page: Page, data: string, godzina: string) =>
 
 const uzupelnijDanePacjenta = async (
   page: Page,
-  danePacjenta: typeof pierwotneDanePacjenta
+  danePacjenta: DanePacjenta
 ) => {
   await page.getByRole('textbox').first().fill(danePacjenta.imie);
   await page.getByRole('textbox').nth(1).fill(danePacjenta.nazwisko);
@@ -57,34 +80,34 @@ const uzupelnijDanePacjenta = async (
     .fill(danePacjenta.notatka);
 };
 
-const sprawdzDanePacjentaWPodsumowaniu = async (
-  page: Page,
-  danePacjenta: typeof pierwotneDanePacjenta,
-  trybSoftAssertion = false
-) => {
-  const expectValue = trybSoftAssertion ? expect.soft : expect;
-
-  await expectValue(pobierzWartoscZPodsumowania(page, 'Imię i nazwisko')).toHaveText(
-    `${danePacjenta.imie} ${danePacjenta.nazwisko}`
-  );
-
-  await expectValue(pobierzWartoscZPodsumowania(page, 'E-mail')).toHaveText(
-    danePacjenta.email
-  );
-
-  await expectValue(pobierzWartoscZPodsumowania(page, 'Telefon')).toHaveText(
-    danePacjenta.telefon
-  );
-
-  await expectValue(pobierzWartoscZPodsumowania(page, 'Notatka')).toHaveText(
-    danePacjenta.notatka
-  );
+const pobierzDanePacjentaZPodsumowania = async (
+  page: Page
+): Promise<DanePacjentaZPodsumowania> => {
+  return {
+    imieINazwisko: await pobierzWartoscZPodsumowania(
+      page,
+      'Imię i nazwisko'
+    ).innerText(),
+    email: await pobierzWartoscZPodsumowania(page, 'E-mail').innerText(),
+    telefon: await pobierzWartoscZPodsumowania(page, 'Telefon').innerText(),
+    notatka: await pobierzWartoscZPodsumowania(page, 'Notatka').innerText(),
+  };
 };
 
+const oczekiwaneDanePacjenta = (
+  danePacjenta: DanePacjenta
+): DanePacjentaZPodsumowania => ({
+  imieINazwisko: `${danePacjenta.imie} ${danePacjenta.nazwisko}`,
+  email: danePacjenta.email,
+  telefon: danePacjenta.telefon,
+  notatka: danePacjenta.notatka,
+});
+
 test.describe('Formularz rezerwacji - nawigacja wstecz', () => {
-  test('powinien zaktualizować dane pacjenta w podsumowaniu po cofnięciu i zmianie wartości', async ({
+  test('powinien zaktualizować dane pacjenta w podsumowaniu po cofnięciu i zmianie wartości @known-bug', async ({
     page,
   }) => {
+
     await page.goto(adresAplikacji);
 
     await page.getByRole('button', { name: 'Dalej' }).click();
@@ -95,17 +118,27 @@ test.describe('Formularz rezerwacji - nawigacja wstecz', () => {
     await uzupelnijDanePacjenta(page, pierwotneDanePacjenta);
     await page.getByRole('button', { name: 'Dalej' }).click();
 
-    await sprawdzDanePacjentaWPodsumowaniu(page, pierwotneDanePacjenta);
+    await expect(
+      page.getByRole('heading', { name: 'Podsumowanie' })
+    ).toBeVisible();
+
+    await expect(await pobierzDanePacjentaZPodsumowania(page)).toEqual(
+      oczekiwaneDanePacjenta(pierwotneDanePacjenta)
+    );
 
     await page.getByRole('button', { name: '← Wstecz' }).click();
 
     await uzupelnijDanePacjenta(page, zaktualizowaneDanePacjenta);
     await page.getByRole('button', { name: 'Dalej' }).click();
 
-    await sprawdzDanePacjentaWPodsumowaniu(
-      page,
-      zaktualizowaneDanePacjenta,
-      true
+    const aktualneDanePacjenta = await pobierzDanePacjentaZPodsumowania(page);
+    const oczekiwaneZaktualizowaneDane = oczekiwaneDanePacjenta(
+      zaktualizowaneDanePacjenta
     );
+
+    expect(
+      aktualneDanePacjenta,
+      'Podsumowanie powinno pokazywać dane wprowadzone po cofnięciu formularza i ponownym przejściu dalej.'
+    ).toEqual(oczekiwaneZaktualizowaneDane);
   });
 });
